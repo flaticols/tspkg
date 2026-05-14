@@ -1,0 +1,1144 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="tspkg is a small Go tool that vendors ESM-only npm packages directly from the npm registry for browser import-map workflows.">
+  <meta name="theme-color" content="#f7f3e8" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#101417" media="(prefers-color-scheme: dark)">
+  <meta property="og:title" content="tspkg">
+  <meta property="og:description" content="Vendor ESM-only npm packages directly from Go. No node, npm, or bundler required.">
+  <meta property="og:type" content="website">
+  <title>tspkg - ESM package vendoring for Go projects</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f7f3e8;
+      --bg-soft: #fffaf0;
+      --surface: #fffdf8;
+      --surface-strong: #fff7df;
+      --text: #182024;
+      --muted: #5b6469;
+      --faint: #7d8589;
+      --line: rgba(24, 32, 36, .14);
+      --line-strong: rgba(24, 32, 36, .22);
+      --accent: #e84d2a;
+      --accent-strong: #c83a19;
+      --accent-soft: rgba(232, 77, 42, .12);
+      --green: #16735f;
+      --blue: #2565b8;
+      --purple: #7a55bd;
+      --code-bg: #11171a;
+      --code-text: #eef5f2;
+      --shadow: 0 22px 70px rgba(62, 42, 20, .13);
+      --radius: 8px;
+      --max: 1180px;
+    }
+
+    @media (prefers-color-scheme: dark) {
+      :root {
+        color-scheme: dark;
+        --bg: #101417;
+        --bg-soft: #151a1d;
+        --surface: #191f22;
+        --surface-strong: #222a2e;
+        --text: #eff4f2;
+        --muted: #bac3c0;
+        --faint: #87918e;
+        --line: rgba(239, 244, 242, .14);
+        --line-strong: rgba(239, 244, 242, .24);
+        --accent: #ff7858;
+        --accent-strong: #ff9b82;
+        --accent-soft: rgba(255, 120, 88, .16);
+        --green: #5fc7a8;
+        --blue: #83b7ff;
+        --purple: #bca1ff;
+        --code-bg: #090d0f;
+        --code-text: #eef5f2;
+        --shadow: 0 22px 70px rgba(0, 0, 0, .35);
+      }
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html {
+      scroll-behavior: smooth;
+    }
+
+    body {
+      margin: 0;
+      background:
+        radial-gradient(circle at 8% 0%, rgba(232, 77, 42, .13), transparent 30rem),
+        linear-gradient(90deg, rgba(24, 32, 36, .055) 1px, transparent 1px),
+        linear-gradient(180deg, var(--bg), var(--bg-soft) 56rem, var(--bg));
+      background-size: auto, 88px 88px, auto;
+      color: var(--text);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      font-size: 16px;
+      line-height: 1.6;
+      text-rendering: optimizeLegibility;
+    }
+
+    @media (prefers-color-scheme: dark) {
+      body {
+        background:
+          radial-gradient(circle at 10% 0%, rgba(255, 120, 88, .12), transparent 28rem),
+          linear-gradient(90deg, rgba(239, 244, 242, .045) 1px, transparent 1px),
+          linear-gradient(180deg, var(--bg), var(--bg-soft) 56rem, var(--bg));
+        background-size: auto, 88px 88px, auto;
+      }
+    }
+
+    a {
+      color: inherit;
+      text-decoration-color: color-mix(in srgb, var(--accent) 65%, transparent);
+      text-decoration-thickness: 1px;
+      text-underline-offset: .18em;
+    }
+
+    a:hover {
+      color: var(--accent-strong);
+    }
+
+    .skip-link {
+      position: absolute;
+      left: 1rem;
+      top: 1rem;
+      z-index: 20;
+      padding: .55rem .75rem;
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      transform: translateY(-140%);
+      transition: transform .18s ease;
+    }
+
+    .skip-link:focus {
+      transform: translateY(0);
+    }
+
+    .site-header {
+      position: sticky;
+      top: 0;
+      z-index: 10;
+      border-bottom: 1px solid var(--line);
+      background: color-mix(in srgb, var(--bg) 86%, transparent);
+      backdrop-filter: blur(18px);
+    }
+
+    .nav {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      width: min(var(--max), calc(100% - 2rem));
+      margin: 0 auto;
+      min-height: 64px;
+      gap: 1rem;
+    }
+
+    .brand {
+      display: inline-flex;
+      align-items: center;
+      gap: .65rem;
+      font-weight: 800;
+      letter-spacing: 0;
+      text-decoration: none;
+    }
+
+    .mark {
+      display: grid;
+      place-items: center;
+      width: 34px;
+      height: 34px;
+      border: 1px solid var(--line-strong);
+      border-radius: 8px;
+      background: var(--surface);
+      box-shadow: inset 0 -8px 18px rgba(232, 77, 42, .08);
+      color: var(--accent);
+      font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-weight: 800;
+      font-size: 15px;
+    }
+
+    .nav-links {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: .2rem;
+      flex-wrap: wrap;
+    }
+
+    .nav-links a {
+      padding: .48rem .68rem;
+      color: var(--muted);
+      font-size: .9rem;
+      font-weight: 600;
+      text-decoration: none;
+      border-radius: 7px;
+    }
+
+    .nav-links a:hover {
+      color: var(--text);
+      background: var(--accent-soft);
+    }
+
+    .page {
+      width: min(var(--max), calc(100% - 2rem));
+      margin: 0 auto;
+    }
+
+    .hero {
+      display: grid;
+      grid-template-columns: minmax(0, 1.05fr) minmax(320px, .95fr);
+      gap: clamp(2rem, 5vw, 5rem);
+      align-items: center;
+      padding: clamp(4.5rem, 10vw, 8.5rem) 0 clamp(3rem, 7vw, 5rem);
+      border-bottom: 1px solid var(--line);
+    }
+
+    .eyebrow {
+      display: inline-flex;
+      align-items: center;
+      gap: .5rem;
+      margin: 0 0 1.15rem;
+      color: var(--accent-strong);
+      font-size: .78rem;
+      font-weight: 800;
+      letter-spacing: .09em;
+      text-transform: uppercase;
+    }
+
+    .eyebrow::before {
+      content: "";
+      width: 28px;
+      height: 2px;
+      background: var(--accent);
+    }
+
+    h1,
+    h2,
+    h3 {
+      margin: 0;
+      line-height: 1.05;
+      letter-spacing: 0;
+    }
+
+    h1 {
+      max-width: 10ch;
+      font-size: clamp(4.25rem, 13vw, 9.25rem);
+      font-weight: 800;
+    }
+
+    .tagline {
+      max-width: 720px;
+      margin: 1.4rem 0 0;
+      color: var(--muted);
+      font-size: clamp(1.15rem, 2vw, 1.45rem);
+      line-height: 1.45;
+    }
+
+    .tagline strong {
+      color: var(--text);
+    }
+
+    .hero-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: .8rem;
+      margin-top: 2rem;
+    }
+
+    .button {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 44px;
+      padding: .72rem 1rem;
+      border: 1px solid var(--line-strong);
+      border-radius: 8px;
+      background: var(--surface);
+      color: var(--text);
+      font-weight: 700;
+      text-decoration: none;
+      box-shadow: 0 10px 24px rgba(24, 32, 36, .05);
+    }
+
+    .button.primary {
+      border-color: color-mix(in srgb, var(--accent) 68%, var(--line));
+      background: var(--accent);
+      color: #fffdf8;
+    }
+
+    .button:hover {
+      color: var(--text);
+      transform: translateY(-1px);
+    }
+
+    .button.primary:hover {
+      color: #fffdf8;
+      background: var(--accent-strong);
+    }
+
+    .terminal-card {
+      overflow: hidden;
+      border: 1px solid var(--line-strong);
+      border-radius: var(--radius);
+      background: var(--code-bg);
+      box-shadow: var(--shadow);
+    }
+
+    .terminal-top {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 1rem;
+      padding: .8rem 1rem;
+      border-bottom: 1px solid rgba(255, 255, 255, .1);
+      color: rgba(238, 245, 242, .7);
+      font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: .78rem;
+    }
+
+    .lights {
+      display: flex;
+      gap: .42rem;
+    }
+
+    .lights span {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: #ff6b58;
+    }
+
+    .lights span:nth-child(2) {
+      background: #f5c65b;
+    }
+
+    .lights span:nth-child(3) {
+      background: #51c878;
+    }
+
+    .terminal-card pre {
+      margin: 0;
+      border-radius: 0;
+    }
+
+    .notice {
+      display: grid;
+      grid-template-columns: auto minmax(0, 1fr);
+      gap: 1rem;
+      align-items: start;
+      margin: 0 0 clamp(3rem, 7vw, 5rem);
+      padding: clamp(1.25rem, 3vw, 1.8rem);
+      border: 1px solid color-mix(in srgb, var(--accent) 38%, var(--line));
+      border-radius: var(--radius);
+      background:
+        linear-gradient(135deg, var(--accent-soft), transparent 68%),
+        var(--surface);
+      box-shadow: 0 18px 45px rgba(24, 32, 36, .06);
+    }
+
+    .notice-icon {
+      display: grid;
+      place-items: center;
+      width: 42px;
+      height: 42px;
+      border-radius: 8px;
+      background: var(--accent);
+      color: #fffdf8;
+      font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-weight: 800;
+    }
+
+    .notice h2 {
+      margin-bottom: .45rem;
+      font-size: clamp(1.45rem, 2.6vw, 2.1rem);
+    }
+
+    .notice p {
+      margin: .45rem 0 0;
+      max-width: 74ch;
+      color: var(--muted);
+    }
+
+    .layout {
+      display: grid;
+      grid-template-columns: 224px minmax(0, 1fr);
+      gap: clamp(2rem, 5vw, 4rem);
+      align-items: start;
+    }
+
+    .toc {
+      position: sticky;
+      top: 88px;
+      padding: .8rem;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: color-mix(in srgb, var(--surface) 82%, transparent);
+    }
+
+    .toc-title {
+      margin: 0 0 .45rem;
+      padding: .2rem .45rem;
+      color: var(--faint);
+      font-size: .72rem;
+      font-weight: 800;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+    }
+
+    .toc a {
+      display: block;
+      padding: .38rem .45rem;
+      border-radius: 6px;
+      color: var(--muted);
+      font-size: .9rem;
+      font-weight: 600;
+      text-decoration: none;
+    }
+
+    .toc a:hover {
+      color: var(--text);
+      background: var(--accent-soft);
+    }
+
+    main {
+      min-width: 0;
+    }
+
+    .section {
+      padding: clamp(3rem, 7vw, 5rem) 0;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .section:first-child {
+      padding-top: 0;
+    }
+
+    .section:last-child {
+      border-bottom: 0;
+    }
+
+    .section-header {
+      display: grid;
+      grid-template-columns: minmax(0, .85fr) minmax(280px, 1fr);
+      gap: 1.5rem;
+      align-items: end;
+      margin-bottom: 1.8rem;
+    }
+
+    .section-kicker {
+      margin: 0 0 .65rem;
+      color: var(--accent-strong);
+      font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: .78rem;
+      font-weight: 700;
+    }
+
+    h2 {
+      font-size: clamp(2rem, 4.8vw, 3.35rem);
+    }
+
+    h3 {
+      margin-top: 2.2rem;
+      font-size: 1.2rem;
+    }
+
+    .lead {
+      margin: 0;
+      color: var(--muted);
+      font-size: 1.06rem;
+    }
+
+    p {
+      margin: .95rem 0 0;
+    }
+
+    .prose {
+      max-width: 78ch;
+    }
+
+    .prose p,
+    .prose li {
+      color: var(--muted);
+    }
+
+    .prose strong {
+      color: var(--text);
+    }
+
+    .cards {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 1rem;
+      margin-top: 1.35rem;
+    }
+
+    .card {
+      min-height: 100%;
+      padding: 1.1rem;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: var(--surface);
+    }
+
+    .card .label {
+      display: block;
+      margin-bottom: .45rem;
+      color: var(--accent-strong);
+      font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: .78rem;
+      font-weight: 700;
+    }
+
+    .card p {
+      margin: 0;
+      color: var(--muted);
+    }
+
+    .tba {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 86px;
+      min-width: min(100%, 320px);
+      margin-top: 1.2rem;
+      border: 1px dashed color-mix(in srgb, var(--accent) 60%, var(--line));
+      border-radius: var(--radius);
+      background: var(--surface);
+      color: var(--accent-strong);
+      font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 1.45rem;
+      font-weight: 800;
+    }
+
+    .table-wrap {
+      overflow-x: auto;
+      margin-top: 1.35rem;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: var(--surface);
+    }
+
+    table {
+      width: 100%;
+      min-width: 720px;
+      border-collapse: collapse;
+      font-size: .95rem;
+    }
+
+    th,
+    td {
+      padding: .9rem 1rem;
+      border-bottom: 1px solid var(--line);
+      text-align: left;
+      vertical-align: top;
+    }
+
+    th {
+      color: var(--text);
+      font-size: .78rem;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+      background: var(--surface-strong);
+    }
+
+    td {
+      color: var(--muted);
+    }
+
+    tr:last-child td {
+      border-bottom: 0;
+    }
+
+    code,
+    kbd {
+      font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-size: .92em;
+    }
+
+    :not(pre) > code {
+      padding: .12rem .32rem;
+      border: 1px solid var(--line);
+      border-radius: 5px;
+      background: color-mix(in srgb, var(--surface-strong) 80%, transparent);
+      color: var(--accent-strong);
+      white-space: nowrap;
+    }
+
+    pre {
+      overflow-x: auto;
+      margin: 1.25rem 0 0;
+      padding: 1.1rem;
+      border: 1px solid rgba(255, 255, 255, .09);
+      border-radius: var(--radius);
+      background: var(--code-bg);
+      color: var(--code-text);
+      font-size: .9rem;
+      line-height: 1.65;
+      tab-size: 2;
+    }
+
+    pre code {
+      font-size: inherit;
+      white-space: pre;
+    }
+
+    .token.comment,
+    .token.prolog,
+    .token.doctype,
+    .token.cdata {
+      color: #7f8b87;
+    }
+
+    .token.punctuation {
+      color: #b7c0bd;
+    }
+
+    .token.property,
+    .token.tag,
+    .token.boolean,
+    .token.number,
+    .token.constant,
+    .token.symbol {
+      color: #ffb86b;
+    }
+
+    .token.selector,
+    .token.attr-name,
+    .token.string,
+    .token.char,
+    .token.builtin {
+      color: #7ee2b8;
+    }
+
+    .token.operator,
+    .token.entity,
+    .token.url,
+    .language-css .token.string,
+    .style .token.string {
+      color: #83b7ff;
+    }
+
+    .token.atrule,
+    .token.attr-value,
+    .token.keyword {
+      color: #ff8f75;
+    }
+
+    .token.function,
+    .token.class-name {
+      color: #d2b4ff;
+    }
+
+    .steps {
+      display: grid;
+      gap: .75rem;
+      margin-top: 1.35rem;
+      padding: 0;
+      list-style: none;
+      counter-reset: steps;
+    }
+
+    .steps li {
+      display: grid;
+      grid-template-columns: auto minmax(0, 1fr);
+      gap: .85rem;
+      align-items: start;
+      counter-increment: steps;
+      padding: 1rem;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: var(--surface);
+    }
+
+    .steps li::before {
+      content: counter(steps);
+      display: grid;
+      place-items: center;
+      width: 30px;
+      height: 30px;
+      border-radius: 7px;
+      background: var(--accent-soft);
+      color: var(--accent-strong);
+      font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-weight: 800;
+    }
+
+    .plain-list {
+      margin: 1.1rem 0 0;
+      padding-left: 1.2rem;
+    }
+
+    .plain-list li + li {
+      margin-top: .6rem;
+    }
+
+    .footer {
+      margin-top: clamp(3rem, 8vw, 6rem);
+      border-top: 1px solid var(--line);
+      background: color-mix(in srgb, var(--surface) 72%, transparent);
+    }
+
+    .footer-inner {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 1rem;
+      width: min(var(--max), calc(100% - 2rem));
+      margin: 0 auto;
+      padding: 2rem 0;
+      color: var(--muted);
+    }
+
+    .footer strong {
+      color: var(--text);
+    }
+
+    @media (max-width: 980px) {
+      .nav {
+        align-items: flex-start;
+        flex-direction: column;
+        padding: .75rem 0;
+      }
+
+      .hero,
+      .layout,
+      .section-header {
+        grid-template-columns: 1fr;
+      }
+
+      .toc {
+        position: static;
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        margin-bottom: 2rem;
+      }
+
+      .toc-title {
+        grid-column: 1 / -1;
+      }
+
+      .cards {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    @media (max-width: 640px) {
+      body {
+        background-size: auto, 56px 56px, auto;
+      }
+
+      .nav-links {
+        display: none;
+      }
+
+      .page,
+      .nav,
+      .footer-inner {
+        width: min(100% - 1.25rem, var(--max));
+      }
+
+      .hero {
+        padding-top: 3rem;
+      }
+
+      .terminal-top {
+        align-items: flex-start;
+        flex-direction: column;
+        gap: .65rem;
+      }
+
+      .notice {
+        grid-template-columns: 1fr;
+      }
+
+      .toc {
+        grid-template-columns: 1fr;
+      }
+
+      .footer-inner {
+        align-items: flex-start;
+        flex-direction: column;
+      }
+    }
+  </style>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+
+  <header class="site-header">
+    <nav class="nav" aria-label="Primary">
+      <a class="brand" href="#top" aria-label="tspkg home">
+        <span class="mark">ts</span>
+        <span>tspkg</span>
+      </a>
+      <div class="nav-links" aria-label="Sections">
+        <a href="#use">Use</a>
+        <a href="#manifest">Manifest</a>
+        <a href="#outputs">Outputs</a>
+        <a href="#esm-only">ESM-only</a>
+        <a href="#wiring">Consumer wiring</a>
+        <a href="#roadmap">Roadmap</a>
+        <a href="https://github.com/flaticols/tspkg">GitHub</a>
+      </div>
+    </nav>
+  </header>
+
+  <div class="page" id="top">
+    <section class="hero" aria-labelledby="hero-title">
+      <div>
+        <p class="eyebrow">Go-native frontend vendoring</p>
+        <h1 id="hero-title">tspkg</h1>
+        <p class="tagline">
+          A small Go tool that vendors <strong>ESM-only npm packages directly from the npm registry</strong>.
+          No <code>node</code>, no <code>npm</code>, no <code>bun</code> required.
+        </p>
+        <div class="hero-actions">
+          <a class="button primary" href="#use">Start using it</a>
+          <a class="button" href="https://github.com/flaticols/tspkg">View on GitHub</a>
+        </div>
+      </div>
+      <div class="terminal-card" aria-label="tspkg command preview">
+        <div class="terminal-top">
+          <div class="lights" aria-hidden="true"><span></span><span></span><span></span></div>
+          <span>go tool tspkg sync</span>
+        </div>
+        <pre><code class="language-sh">go get -tool go.flaticols.dev/tspkg/cmd/tspkg
+
+go tool tspkg sync
+go tool tspkg verify</code></pre>
+      </div>
+    </section>
+
+    <section class="notice" aria-labelledby="status-title">
+      <div class="notice-icon" aria-hidden="true">!</div>
+      <div>
+        <h2 id="status-title">In active development, and intentionally narrow.</h2>
+        <p>
+          <strong><code>tspkg</code> is not a replacement for <code>npm</code>, <code>pnpm</code>, <code>yarn</code>, or <code>bun</code>.</strong>
+          It targets projects that ship browser code via HTML import maps and want their whole frontend
+          toolchain to live inside <code>go.mod</code>.
+        </p>
+        <p>
+          It intentionally rejects anything that needs transpilation, bundling, or a Node runtime. If you
+          need a general-purpose package manager, use one.
+        </p>
+        <p>
+          Originally extracted from the <code>weld</code> library, which is still in development and not yet public.
+          <code>tspkg</code> is small and self-contained enough to stand on its own, so it is released ahead of the rest.
+        </p>
+      </div>
+    </section>
+
+    <div class="layout">
+      <aside class="toc" aria-label="Page contents">
+        <p class="toc-title">Contents</p>
+        <a href="#overview">Overview</a>
+        <a href="#use-cases">Use cases</a>
+        <a href="#use">Use</a>
+        <a href="#manifest">Manifest</a>
+        <a href="#outputs">Outputs</a>
+        <a href="#esm-only">ESM-only</a>
+        <a href="#wiring">Consumer wiring</a>
+        <a href="#rebase">Rebase</a>
+        <a href="#limitations">Limitations</a>
+        <a href="#roadmap">Roadmap</a>
+      </aside>
+
+      <main id="main">
+        <section class="section" id="overview" aria-labelledby="overview-title">
+          <div class="section-header">
+            <div>
+              <p class="section-kicker">00 / Overview</p>
+              <h2 id="overview-title">ESM packages, vendored by Go.</h2>
+            </div>
+            <p class="lead">
+              <code>tspkg</code> reads <code>package.json</code>, resolves npm packages, vendors browser-ready files,
+              and emits an import map that Go templates can inline.
+            </p>
+          </div>
+          <div class="cards" aria-label="tspkg workflow">
+            <article class="card">
+              <span class="label">Fetch</span>
+              <p>Fetches npm registry tarballs over HTTPS and verifies their registry integrity metadata.</p>
+            </article>
+            <article class="card">
+              <span class="label">Vendor</span>
+              <p>Unpacks selected package files into a configurable vendor directory committed or ignored on your terms.</p>
+            </article>
+            <article class="card">
+              <span class="label">Generate</span>
+              <p>Writes Go source containing import-map JSON constants, plus a lockfile with per-file SHA-256 hashes.</p>
+            </article>
+          </div>
+        </section>
+
+        <section class="section" id="use-cases" aria-labelledby="use-cases-title">
+          <div class="section-header">
+            <div>
+              <p class="section-kicker">01 / Use cases</p>
+              <h2 id="use-cases-title">Use cases</h2>
+            </div>
+            <p class="lead">This section is intentionally reserved to match the current project README.</p>
+          </div>
+          <div class="tba">TBA</div>
+        </section>
+
+        <section class="section" id="use" aria-labelledby="use-title">
+          <div class="section-header">
+            <div>
+              <p class="section-kicker">02 / Use</p>
+              <h2 id="use-title">Install it as a Go tool dependency.</h2>
+            </div>
+            <p class="lead">
+              Register <code>tspkg</code> in <code>go.mod</code>, then drive sync and verification from the project directory
+              that contains <code>package.json</code>.
+            </p>
+          </div>
+          <pre><code class="language-sh">go get -tool go.flaticols.dev/tspkg/cmd/tspkg</code></pre>
+          <pre><code class="language-sh">go tool tspkg sync     # resolve, fetch + verify tarballs, vendor, regenerate importmap + lock
+go tool tspkg verify   # recompute hashes for the vendored files; non-zero exit on mismatch
+go tool tspkg help     # usage</code></pre>
+          <p class="lead">Both commands read <code>package.json</code> from the current working directory.</p>
+        </section>
+
+        <section class="section" id="manifest" aria-labelledby="manifest-title">
+          <div class="section-header">
+            <div>
+              <p class="section-kicker">03 / Manifest</p>
+              <h2 id="manifest-title">Configuration lives in package.json.</h2>
+            </div>
+            <p class="lead">
+              Dependencies use the standard npm field. Project-specific settings live under a namespaced
+              <code>tspkg</code> block, which npm and other tooling ignore.
+            </p>
+          </div>
+          <pre><code class="language-json">{
+  "dependencies": {
+    "@phosphor-icons/core": "^2.1.0",
+    "graphology": "^0.26.0",
+    "sigma": "^3.0.0"
+  },
+  "tspkg": {
+    "include": {
+      "@phosphor-icons/core": [
+        "package.json",
+        "assets/duotone/**/*.svg",
+        "LICENSE*"
+      ]
+    },
+    "skip":    ["events"],
+    "bundled": ["graphology", "sigma"],
+    "groups":  { "graph": ["sigma", "graphology"] },
+
+    "paths": {
+      "vendor":        "assets/static/vendor",
+      "lock":          "tspkg.lock",
+      "importmap":     "importmap/importmap.go",
+      "vendorUrlBase": "/static/vendor"
+    },
+    "importmap": { "package": "importmap" }
+  }
+}</code></pre>
+
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Field</th>
+                  <th>Effect</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><code>dependencies</code></td>
+                  <td>Standard npm field and the source of truth for packages and version constraints.</td>
+                </tr>
+                <tr>
+                  <td><code>include[&lt;pkg&gt;]</code></td>
+                  <td>Doublestar globs relative to the package root. When unset, <code>tspkg</code> vendors everything except obvious noise such as most Markdown files, TypeScript sources, source maps, tests, source folders, and docs.</td>
+                </tr>
+                <tr>
+                  <td><code>skip</code></td>
+                  <td>Transitive dependency names to ignore. Useful for phantom CJS deps that bundled distributions do not import at runtime. You take responsibility for runtime correctness.</td>
+                </tr>
+                <tr>
+                  <td><code>bundled</code></td>
+                  <td>Packages whose distribution is self-contained. <code>tspkg</code> vendors the package itself but does not walk declared dependencies.</td>
+                </tr>
+                <tr>
+                  <td><code>groups[&lt;name&gt;]</code></td>
+                  <td>Buckets package names into named groups. Each group becomes a <code>const &lt;Group&gt;</code> in the generated Go file. Ungrouped packages land in <code>const Base</code>.</td>
+                </tr>
+                <tr>
+                  <td><code>paths.vendor</code></td>
+                  <td>Directory for vendored packages. Default: <code>assets/static/vendor</code>.</td>
+                </tr>
+                <tr>
+                  <td><code>paths.lock</code></td>
+                  <td>Lockfile path. Default: <code>tspkg.lock</code>.</td>
+                </tr>
+                <tr>
+                  <td><code>paths.importmap</code></td>
+                  <td>Output path of the generated Go file. Default: <code>importmap/importmap.go</code>.</td>
+                </tr>
+                <tr>
+                  <td><code>paths.vendorUrlBase</code></td>
+                  <td>URL prefix for the vendored tree. Default: <code>/static/vendor</code>. Must start with <code>/static/</code> so <code>importmap.Rebase</code> can rewrite onto a consumer asset base.</td>
+                </tr>
+                <tr>
+                  <td><code>importmap.package</code></td>
+                  <td>Go package name declared at the top of the generated file. Default: <code>importmap</code>.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="section" id="outputs" aria-labelledby="outputs-title">
+          <div class="section-header">
+            <div>
+              <p class="section-kicker">04 / Outputs</p>
+              <h2 id="outputs-title">Three artifacts, one repeatable snapshot.</h2>
+            </div>
+            <p class="lead">
+              <code>sync</code> regenerates the vendor tree, import-map source, and lockfile from the manifest.
+            </p>
+          </div>
+          <div class="cards">
+            <article class="card">
+              <span class="label">Vendor directory</span>
+              <p><code>paths.vendor</code> contains unpacked package files. The README recommends gitignoring it because <code>sync</code> regenerates it.</p>
+            </article>
+            <article class="card">
+              <span class="label">Generated importmap</span>
+              <p><code>paths.importmap</code> exports <code>const Base</code> plus one <code>const &lt;Group&gt;</code> per group. Commit it as a live bundle snapshot consumed by the templ layout.</p>
+            </article>
+            <article class="card">
+              <span class="label">Lockfile</span>
+              <p><code>paths.lock</code> records resolved versions, SRI <code>sha512</code> integrity, and per-file <code>sha256</code> hashes used by <code>verify</code>. Commit it.</p>
+            </article>
+          </div>
+        </section>
+
+        <section class="section" id="esm-only" aria-labelledby="esm-only-title">
+          <div class="section-header">
+            <div>
+              <p class="section-kicker">05 / ESM-only constraint</p>
+              <h2 id="esm-only-title">No CJS fallback, no broken vendor trees.</h2>
+            </div>
+            <p class="lead">
+              Packages without a usable ESM entry are rejected with a clear error.
+            </p>
+          </div>
+          <p class="prose">The resolver checks package entrypoints in this order:</p>
+          <ol class="steps">
+            <li><code>exports["."].module</code> preferred, typically the genuine ESM build.</li>
+            <li><code>exports["."].browser</code></li>
+            <li><code>exports["."].import</code></li>
+            <li><code>module</code></li>
+            <li><code>main</code>, only if it ends in <code>.mjs</code> or ends in <code>.js</code> with <code>"type": "module"</code>.</li>
+          </ol>
+        </section>
+
+        <section class="section" id="wiring" aria-labelledby="wiring-title">
+          <div class="section-header">
+            <div>
+              <p class="section-kicker">06 / Consumer wiring</p>
+              <h2 id="wiring-title">Inline generated maps from Go templates.</h2>
+            </div>
+            <p class="lead">
+              Use the generated package from a templ layout or any HTML template. The helper rewrites the canonical
+              <code>/static/</code> prefix onto the asset base used by the consumer.
+            </p>
+          </div>
+          <pre><code class="language-go">// internal/views/layout.templ
+package views
+
+import (
+    "yourapp/importmap" // the generated package
+    tspkg "go.flaticols.dev/tspkg/importmap"
+)
+
+templ Layout(assetBase string) {
+    &lt;html&gt;
+        &lt;head&gt;
+            @templ.Raw(`&lt;script type="importmap"&gt;` + tspkg.Rebase(assetBase, importmap.Base) + `&lt;/script&gt;`)
+            // Optionally inline a heavier group only on pages that need it:
+            // @templ.Raw(`&lt;script type="importmap"&gt;` + tspkg.Rebase(assetBase, importmap.Graph) + `&lt;/script&gt;`)
+        &lt;/head&gt;
+        &lt;body&gt;{ children... }&lt;/body&gt;
+    &lt;/html&gt;
+}</code></pre>
+        </section>
+
+        <section class="section" id="rebase" aria-labelledby="rebase-title">
+          <div class="section-header">
+            <div>
+              <p class="section-kicker">07 / Rebase</p>
+              <h2 id="rebase-title">Serve assets from the path your app uses.</h2>
+            </div>
+            <p class="lead">
+              Generated map URLs use the canonical <code>/static/</code> prefix. <code>importmap.Rebase</code>
+              swaps it for the consumer asset base.
+            </p>
+          </div>
+          <pre><code class="language-go">tspkg.Rebase("/assets/", importmap.Base) // replaces "/static/" with "/assets/"
+tspkg.Rebase("/static/", importmap.Base) // no-op
+tspkg.Rebase("",         importmap.Base) // no-op</code></pre>
+        </section>
+
+        <section class="section" id="limitations" aria-labelledby="limitations-title">
+          <div class="section-header">
+            <div>
+              <p class="section-kicker">08 / Limitations</p>
+              <h2 id="limitations-title">Limitations by design.</h2>
+            </div>
+            <p class="lead">
+              The project is intentionally scoped to browser-ready ESM packages and public npm registry tarballs.
+            </p>
+          </div>
+          <ul class="plain-list">
+            <li>ESM only. No CJS, no UMD, no transpilation, no bundling.</li>
+            <li>Only <code>sha512</code> SRI hashes are recognized, matching the npm registry's current format.</li>
+            <li>No npm authentication. Only public registry packages.</li>
+            <li>No lockfile-driven offline mode. <code>sync</code> always re-fetches.</li>
+            <li>No watch mode. It is a one-shot build step.</li>
+          </ul>
+        </section>
+
+        <section class="section" id="roadmap" aria-labelledby="roadmap-title">
+          <div class="section-header">
+            <div>
+              <p class="section-kicker">09 / Roadmap</p>
+              <h2 id="roadmap-title">Possible TypeScript transpilation, later.</h2>
+            </div>
+            <p class="lead">
+              TypeScript transpilation via <a href="https://github.com/microsoft/typescript-go"><code>typescript-go</code></a>
+              is on the table. It would let packages that ship <code>.ts</code> sources be vendored as usable
+              <code>.js</code>, but it is not a priority right now because the current ESM-only flow covers the intended use cases.
+            </p>
+          </div>
+        </section>
+      </main>
+    </div>
+  </div>
+
+  <footer class="footer">
+    <div class="footer-inner">
+      <div><strong>tspkg</strong> - ESM package vendoring for Go projects.</div>
+      <a href="https://github.com/flaticols/tspkg">github.com/flaticols/tspkg</a>
+    </div>
+  </footer>
+
+  <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/components/prism-core.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/plugins/autoloader/prism-autoloader.min.js"></script>
+</body>
+</html>

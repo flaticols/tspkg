@@ -5,6 +5,10 @@
 > `pnpm`, `yarn`, or `bun`. It targets a narrow set of use cases (see below)
 > and intentionally rejects anything that needs transpilation, bundling, or
 > a Node runtime. If you need a general-purpose package manager, use one.
+>
+> Originally extracted from the `weld` library (still in development and
+> not yet public). `tspkg` is small and self-contained enough to stand on
+> its own, so it's released ahead of the rest.
 
 A small Go tool that vendors ESM-only npm packages **directly from the npm
 registry** — no `node`, no `npm`, no `bun` required. Designed for projects

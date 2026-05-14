@@ -153,3 +153,10 @@ tspkg.Rebase("",         importmap.Base) // no-op
 - No npm authentication; only public registry packages.
 - No lockfile-driven offline mode; `sync` always re-fetches.
 - No watch mode; it's a one-shot build step.
+
+## Roadmap
+
+- TypeScript transpilation via [`typescript-go`](https://github.com/microsoft/typescript-go)
+  is on the table — would let packages that ship `.ts` sources be vendored as
+  usable `.js`. Not a priority right now; the current ESM-only flow covers the
+  intended use cases.
